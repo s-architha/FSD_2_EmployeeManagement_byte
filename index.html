@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Employee Management</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body class="bg-light">
+<div class="container py-4">
+  <h2 class="mb-3">Employee Management System</h2>
+  <div id="msg"></div>
+
+  <div id="loginBox" class="card p-3 mb-4">
+    <h5>Admin login</h5>
+    <p class="text-muted small mb-2">Demo: admin@example.com / admin12345</p>
+    <div class="row g-2">
+      <div class="col-md-4"><input id="lemail" class="form-control" placeholder="Email"></div>
+      <div class="col-md-4"><input id="lpass" type="password" class="form-control" placeholder="Password"></div>
+      <div class="col-md-4"><button class="btn btn-primary w-100" onclick="login()">Login</button></div>
+    </div>
+  </div>
+
+  <div id="adminBar" class="mb-3 d-none">
+    <span class="me-2">Logged in as admin</span>
+    <button class="btn btn-outline-secondary btn-sm" onclick="logout()">Logout</button>
+  </div>
+
+  <div id="formBox" class="card p-3 mb-4 d-none">
+    <h5 id="formTitle">Add employee</h5>
+    <input type="hidden" id="eid">
+    <div class="row g-2">
+      <div class="col-md-4"><input id="name" class="form-control" placeholder="Name"></div>
+      <div class="col-md-4"><input id="email" class="form-control" placeholder="Email"></div>
+      <div class="col-md-4"><input id="role" class="form-control" placeholder="Role"></div>
+      <div class="col-md-4"><input id="department" class="form-control" placeholder="Department"></div>
+      <div class="col-md-4"><input id="salary" type="number" class="form-control" placeholder="Salary"></div>
+      <div class="col-md-4 d-flex gap-2">
+        <button class="btn btn-success flex-fill" onclick="save()">Save</button>
+        <button class="btn btn-secondary flex-fill" onclick="resetForm()">Clear</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="table-responsive">
+    <table class="table table-striped bg-white">
+      <thead><tr><th>ID</th><th>Name</th><th>Email</th><th>Role</th><th>Department</th><th>Salary</th><th class="adminCol d-none">Actions</th></tr></thead>
+      <tbody id="rows"></tbody>
+    </table>
+  </div>
+</div>
+
+<script>
+let token = null;
+const $ = id => document.getElementById(id);
+
+function show(text, type = "success") {
+  $("msg").innerHTML = `<div class="alert alert-${type}">${text}</div>`;
+  setTimeout(() => $("msg").innerHTML = "", 4000);
+}
+
+function errText(data) {
+  if (Array.isArray(data.detail)) return data.detail.map(d => d.loc.slice(-1)[0] + ": " + d.msg).join("; ");
+  return data.detail || "Something went wrong";
+}
+
+async function login() {
+  const res = await fetch("/login", {
+    method: "POST", headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({email: $("lemail").value, password: $("lpass").value})
+  });
+  const data = await res.json();
+  if (!res.ok) return show(errText(data), "danger");
+  token = data.access_token;
+  $("loginBox").classList.add("d-none");
+  $("adminBar").classList.remove("d-none");
+  $("formBox").classList.remove("d-none");
+  document.querySelectorAll(".adminCol").forEach(e => e.classList.remove("d-none"));
+  show("Logged in");
+  load();
+}
+
+function logout() { location.reload(); }
+
+async function load() {
+  const res = await fetch("/employees");
+  const list = await res.json();
+  $("rows").innerHTML = list.map(e => `
+    <tr>
+      <td>${e.id}</td><td>${e.name}</td><td>${e.email}</td>
+      <td>${e.role}</td><td>${e.department}</td><td>${e.salary}</td>
+      ${token ? `<td>
+        <button class="btn btn-sm btn-warning" onclick='edit(${JSON.stringify(e)})'>Edit</button>
+        <button class="btn btn-sm btn-danger" onclick="del(${e.id})">Delete</button></td>` : ""}
+    </tr>`).join("");
+}
+
+function edit(e) {
+  $("formTitle").textContent = "Edit employee #" + e.id;
+  $("eid").value = e.id;
+  ["name", "email", "role", "department", "salary"].forEach(k => $(k).value = e[k]);
+  window.scrollTo(0, 0);
+}
+
+function resetForm() {
+  $("formTitle").textContent = "Add employee";
+  ["eid", "name", "email", "role", "department", "salary"].forEach(k => $(k).value = "");
+}
+
+async function save() {
+  const id = $("eid").value;
+  const body = {
+    name: $("name").value, email: $("email").value, role: $("role").value,
+    department: $("department").value, salary: parseFloat($("salary").value)
+  };
+  const res = await fetch(id ? "/employees/" + id : "/employees", {
+    method: id ? "PUT" : "POST",
+    headers: {"Content-Type": "application/json", "Authorization": "Bearer " + token},
+    body: JSON.stringify(body)
+  });
+  const data = await res.json();
+  if (!res.ok) return show(errText(data), "danger");
+  show(id ? "Employee updated" : "Employee added");
+  resetForm();
+  load();
+}
+
+async function del(id) {
+  if (!confirm("Delete this employee?")) return;
+  const res = await fetch("/employees/" + id, {
+    method: "DELETE", headers: {"Authorization": "Bearer " + token}
+  });
+  if (!res.ok) return show("Delete failed", "danger");
+  show("Employee deleted");
+  load();
+}
+
+load();
+</script>
+</body>
+</html>
